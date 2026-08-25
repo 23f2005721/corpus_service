@@ -5,13 +5,16 @@ import json
 import google_crc32c
 
 app = FastAPI()
+
 URI_RE = re.compile(r"^gs://[^/]+/.+$")
 GEN_RE = re.compile(r"^[0-9]+$")
 CRC_RE = re.compile(r"^[0-9a-f]{8}$")
 
+
 @app.get("/")
 def health():
     return {"status": "ok"}
+
 
 @app.post("/build-corpus")
 async def build_corpus(payload: dict):
@@ -41,17 +44,19 @@ async def build_corpus(payload: dict):
         schema = obj.get("schemaId")
         content = obj.get("content")
 
+        # URI validation
         if not isinstance(uri, str) or not URI_RE.fullmatch(uri):
             reasons.append("URI_INVALID")
 
+        # Generation validation
         gen_valid = (
             isinstance(generation, str)
             and GEN_RE.fullmatch(generation)
         )
 
-    fetched_valid = (
-        isinstance(fetched, str)
-        and GEN_RE.fullmatch(fetched)
+        fetched_valid = (
+            isinstance(fetched, str)
+            and GEN_RE.fullmatch(fetched)
         )
 
         if not gen_valid or not fetched_valid:
@@ -60,6 +65,7 @@ async def build_corpus(payload: dict):
         elif generation != fetched:
             reasons.append("GENERATION_MISMATCH")
 
+        # CRC validation
         crc_valid = (
             isinstance(crc, str)
             and CRC_RE.fullmatch(crc)
@@ -75,81 +81,83 @@ async def build_corpus(payload: dict):
             if actual_crc != crc:
                 reasons.append("CRC32C_MISMATCH")
 
+        # Schema validation
         if schema != "training-v1":
             reasons.append("SCHEMA_INVALID")
 
         if not isinstance(content, str):
             reasons.append("SCHEMA_INVALID")
 
+        # JSONL validation
         if isinstance(content, str):
 
             lines = [x for x in content.splitlines() if x.strip()]
 
-        if len(lines) == 0:
-            reasons.append("SCHEMA_INVALID")
+            if len(lines) == 0:
+                reasons.append("SCHEMA_INVALID")
 
-        else:
+            else:
 
-            for line in lines:
+                for line in lines:
 
-                try:
-                    row = json.loads(line)
+                    try:
+                        row = json.loads(line)
 
-                    if (
-                        not isinstance(row, dict)
-                        or set(row.keys())
-                        != {
-                            "id",
-                            "entity",
-                            "eventTime",
-                            "revision",
-                            "text",
+                        if (
+                            not isinstance(row, dict)
+                            or set(row.keys())
+                            != {
+                                "id",
+                                "entity",
+                                "eventTime",
+                                "revision",
+                                "text",
                             }
                         ):
-                        reasons.append("SCHEMA_INVALID")
+                            reasons.append("SCHEMA_INVALID")
+                            break
+
+                    except Exception:
+                        reasons.append("JSONL_INVALID")
                         break
 
-                except Exception:
-                    reasons.append("JSONL_INVALID")
-                    break
         reasons = sorted(set(reasons))
 
         if reasons:
 
             rejected_objects.append(
-            {
-                "uri": uri if isinstance(uri, str) else None,
-                "reasonCodes": reasons,
+                {
+                    "uri": uri if isinstance(uri, str) else None,
+                    "reasonCodes": reasons,
                 }
             )
 
         else:
 
             lineage.append(
-            {
-                "uri": uri,
-                "generation": generation,
-                "crc32c": crc,
-                "schemaId": schema,
+                {
+                    "uri": uri,
+                    "generation": generation,
+                    "crc32c": crc,
+                    "schemaId": schema,
                 }
             )
-        rejected_objects.sort(key=lambda x: str(x["uri"]))
-        lineage.sort(key=lambda x: x["uri"])
 
-        return {
-            "splits": {
-                "train": [],
-                "validation": [],
-                "test": []
-            },
-            "rejectedObjects": rejected_objects,
-            "rejectedRows": [],
-            "digests": {
-                "train": "",
-                "validation": "",
-                "test": ""
-            },
-            "lineage": lineage
-        }
-        
+    rejected_objects.sort(key=lambda x: str(x["uri"]))
+    lineage.sort(key=lambda x: x["uri"])
+
+    return {
+        "splits": {
+            "train": [],
+            "validation": [],
+            "test": []
+        },
+        "rejectedObjects": rejected_objects,
+        "rejectedRows": [],
+        "digests": {
+            "train": "",
+            "validation": "",
+            "test": ""
+        },
+        "lineage": lineage
     }
