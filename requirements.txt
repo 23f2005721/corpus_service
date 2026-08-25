@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+google-crc32c
+python-dateutil
