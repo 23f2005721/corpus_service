@@ -1,6 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+import re
+import json
+import google_crc32c
 
 app = FastAPI()
+URI_RE = re.compile(r"^gs://[^/]+/.+$")
+GEN_RE = re.compile(r"^[0-9]+$")
+CRC_RE = re.compile(r"^[0-9a-f]{8}$")
 
 @app.get("/")
 def health():
@@ -15,10 +22,13 @@ async def build_corpus(payload: dict):
         or "objects" not in payload
         or not isinstance(payload["objects"], list)
     ):
-        raise HTTPException(
+        return JSONResponse(
             status_code=400,
-            detail={"error": "INVALID_INPUT"}
+            content={"error": "INVALID_INPUT"}
         )
+
+    rejected_objects = []
+    lineage = []
 
     return {
         "splits": {
@@ -34,4 +44,5 @@ async def build_corpus(payload: dict):
             "test": ""
         },
         "lineage": []
+        
     }
